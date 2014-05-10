@@ -1,0 +1,17 @@
+# TODO: use uniform prior on log(tauG)!!! and uniform priors
+# on log(tau) and muG
+model{
+  for(n in 1: Ndata){
+    y[n] ~ dnorm(theta[subj[n]], exp(logtau))
+  }
+
+
+  for(s in 1: Nsubj){
+    theta[s] ~ dnorm(muG, exp(logtauG)) T(0, )
+  }
+
+  logtau ~ dunif(-1000., 1000.)
+  muG ~ dnorm(0., 0.0001) T(0, )
+  logtauG ~ dunif(-1000., 1000.)
+
+}
