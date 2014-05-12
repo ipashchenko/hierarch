@@ -76,8 +76,48 @@ def lnpr(p):
 
     return p[2]
 
+def get_theta_sample(dgamma, a=2, **kwargs):
+    """
+    Function that generates sample from theta distribution given specified gamma
+    distribution.
+
+    :param dgamma:
+        Distribution of gamma. When called with **kwargs returns samples from
+        distribution of gamma.
+
+    :return:
+        Ln of pdf of theta.
+    """
+
+    def theta_cdf(theta, beta, a=2):
+        """
+        Function that returns cdf for theta given value(s) of beta.
+        """
+        return ((1. - beta) ** (-a) - (1. - beta * math.cos(theta)) ** (-a)) /\
+               ((1. - beta) ** (-a) - 1.)
+
+    # Sample N points from gamma_distr
+    gamma_samples = np.asarray(dgamma(**kwargs))
+    # Recalculate beta distribution
+    beta_samples = np.sqrt(gamma_samples ** 2. - 1.) / gamma_samples
+
+    # Sample N uniform numbers from unif(0, 1)
+    us = np.random.uniform(0, 1, size=len(beta_samples))
+    # Use inverse CDF method for sampling N values of theta from theta
+    # distribution
+    theta_samples = np.arccos((1. - ((1. - beta_samples) ** (-a) - us *
+                                     ((1. - beta_samples) ** (-a) - 1.)) **
+                               (-1. / a)) / beta_samples)
+
+    return theta_samples
+
+# TODO: Calculate theta_pdf for whole distribution of gamma/beta and fit with
+# KDE, then, for each object, get theta_pdf_i using importance sampling with
+# KDE as importance function
+
 
 if __name__ == '__main__':
+    # Data from Gelman (Table 11.2)
     y_ij = list()
     y_ij.append([62, 60, 63, 59])
     y_ij.append([63, 67, 71, 64, 65, 66])
@@ -92,15 +132,9 @@ if __name__ == '__main__':
                      [10., 1., 1., 10., 10., 10., 10.], size=500)
     print "sample ball :"
     print p0
+    print "Burning-in..."
     pos, prob, state = sampler.run_mcmc(p0, 300)
-    print "Reseting for burn-in"
+    print "Reseting burn-in..."
     sampler.reset()
     print "Now sampling from posterior"
     sampler.run_mcmc(pos, 1000, rstate0=state)
-
-    #lnlike = LnLike(y_ij)
-    #p = [60., -0.1, -0.1, 60., 60., 60., 60.]
-    #k = sum([np.sum(LnLike.ln_of_normpdf(np.asarray(y_ij[j]), loc=theta,
-    #                                     logscale=p[2])) for j, theta in
-    #         enumerate(p[3:])])
-    #print k
