@@ -63,6 +63,16 @@ class LnLike(object):
         return np.sum(self.ln_of_normpdf(p[3:], loc=p[0], logscale=p[1])) + k
 
 
+class Dlognorm_shifted(object):
+    """
+    Function that returns samples from shifted lognormal distribution.
+    """
+    def __init__(self, shift=0):
+        self.shift = shift
+
+    def __call__(self, **kwargs):
+        return self.shift + np.random.lognormal(**kwargs)
+
 def lnpr(p):
     """
     Prior on parameters.
@@ -138,3 +148,7 @@ if __name__ == '__main__':
     sampler.reset()
     print "Now sampling from posterior"
     sampler.run_mcmc(pos, 1000, rstate0=state)
+
+    dgamma = Dlognorm_shifted(2.)
+    np.hist(dgamma(mean=2, sigma=0.5, size=10000), bins=50, normed=True)
+    np.hist(get_theta_sample(dgamma, mean=2, sigma=0.5, size=10000)*180./math.pi, bins=50, normed=True)
