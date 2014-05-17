@@ -97,7 +97,6 @@ class LnLike(object):
         return np.sum(self.ln_of_normpdf2(p[3:], loc=p[0], logscale=p[1])) + k
 
 
-
 def lnpr(p):
     """
     Prior on parameters.
@@ -112,7 +111,7 @@ def lnpr(p):
     return p[2]
 
 
-def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10**4):
+def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10. ** 4):
     """
     Function that returns ``size`` number of samples from lognormal distribution
     with ``mu``, ``sigma`` and shifted by ``shift``.
@@ -139,7 +138,6 @@ def get_theta_sample(gamma_sample, a=2.):
         return ((1. - beta) ** (-a) - (1. - beta * math.cos(theta)) ** (-a)) / \
                ((1. - beta) ** (-a) - 1.)
 
-    # Sample N points from gamma_distr
     gamma_sample = np.asarray(gamma_sample)
     # Recalculate beta distribution
     beta_sample = np.sqrt(gamma_sample ** 2. - 1.) / gamma_sample
@@ -159,7 +157,7 @@ def get_theta_sample(gamma_sample, a=2.):
 # KDE as importance function
 
 
-def get_pdf_of_theta_given_gamma(mean, sigma, shift, size=10**4, a=2):
+def get_pdf_of_theta_given_gamma(mean, sigma, shift, size=10. ** 4, a=2.):
     """
     Function that returns callable pdf of theta distribution given parameters
     of gamma distribution (that is shifted lognormal).
