@@ -5,6 +5,7 @@ import numpy as np
 import math
 from scipy import special
 from scipy.stats import gaussian_kde
+from scipy.stats import norm
 
 
 class Dlognorm_shifted(object):
@@ -211,8 +212,8 @@ def vec_lnlognorm(x, mu, sigma, shift=0.):
 
 def vec_lngenbeta(x, alpha, beta, c, d):
     """
-    Vectorized (natural logarithm of) Beta distribution with support (c,d). A.k.a.
-    generalized Beta distribution.
+    Vectorized (natural logarithm of) Beta distribution with support (c,d).
+    A.k.a. generalized Beta distribution.
     """
 
     x_ = np.where((c < x) & (x < d), x, 1)
@@ -221,6 +222,22 @@ def vec_lngenbeta(x, alpha, beta, c, d):
                                                      math.log(d - c) + (alpha - 1.) * np.log(x_ - c) + (beta - 1.) * \
               np.log(d - x_)
     result = np.where((c < x) & (x < d), result1, float("-inf"))
+
+    return result
+
+
+def ln_normal_trunc(x, mean, sigma, a, b):
+    """
+    Function that returns log of truncated at [a, b] normal distribution with
+    mean ``mean`` and variance ``sigma**2``.
+    """
+    if a <= x <= b:
+        k = math.log(norm.cdf((b - mean) / sigma) -
+                     norm.cdf((a - mean) / sigma))
+        result = -math.log(sigma) - 0.5 * math.log(2. * math.pi) -\
+               0.5 * ((x - mean) / sigma) ** 2. - k
+    else:
+        result = float("-inf")
 
     return result
 
