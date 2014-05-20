@@ -6,6 +6,7 @@ import math
 from scipy import special
 from scipy.stats import gaussian_kde
 from scipy.stats import norm
+from scipy.special import gamma
 
 
 class Dlognorm_shifted(object):
@@ -193,9 +194,23 @@ def vec_lngenbeta(x, alpha, beta, c, d):
     x_ = np.where((c < x) & (x < d), x, 1)
 
     result1 = -math.log(special.beta(alpha, beta)) - (alpha + beta - 1.) * \
-                                                     math.log(d - c) + (alpha - 1.) * np.log(x_ - c) + (beta - 1.) * \
+              math.log(d - c) + (alpha - 1.) * np.log(x_ - c) + (beta - 1.) * \
               np.log(d - x_)
     result = np.where((c < x) & (x < d), result1, float("-inf"))
+
+    return result
+
+
+def vec_lngamma(x, s, r):
+    """
+    Vectorized (natural logarithm of) Gamma distribution with shape and rate
+    parameters ``s`` & ``r``.
+    """
+    assert((s > 0) & (r > 0))
+    x_ = np.where(0 < x, x, 1)
+    result1 = s * math.log(r) - math.log(gamma(s)) + (s - 1.) * np.log(x_) -\
+              r * x_
+    result = np.where(0 < x, result1, float("-inf"))
 
     return result
 
@@ -205,13 +220,12 @@ def ln_normal_trunc(x, mean, sigma, a, b):
     Function that returns log of truncated at [a, b] normal distribution with
     mean ``mean`` and variance ``sigma**2``.
     """
-    if a <= x <= b:
-        k = math.log(norm.cdf((b - mean) / sigma) -
-                     norm.cdf((a - mean) / sigma))
-        result = -math.log(sigma) - 0.5 * math.log(2. * math.pi) -\
-               0.5 * ((x - mean) / sigma) ** 2. - k
-    else:
-        result = float("-inf")
+    x_ = np.where((a < x) & (x < b), x, 1)
+    k = math.log(norm.cdf((b - mean) / sigma) -
+                 norm.cdf((a - mean) / sigma))
+    result1 = -math.log(sigma) - 0.5 * math.log(2. * math.pi) -\
+           0.5 * ((x_ - mean) / sigma) ** 2. - k
+    result = np.where((a < x) & (x < b), result1, float("-inf"))
 
     return result
 
