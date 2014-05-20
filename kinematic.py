@@ -170,32 +170,6 @@ def get_pdf_of_theta_given_gamma(mean, sigma, shift, size=10**4, a=2):
     return gaussian_kde(theta_sample)
 
 
-def ln_raised_cosine(x, mu, s):
-    """
-    Function that returns log of raises cosine distribution:
-        http://en.wikipedia.org/wiki/Raised_cosine_distribution
-
-    :param x:
-        Point at which to calculate log of pdf.
-
-    :param mu:
-        Mean, median, mode of pdf. (-inf, +inf)
-
-    :param s:
-        ``s^2`` ~ dispersion. (0, +inf)
-
-    :return:
-        Log of pdf at ``x``.
-    """
-    if (x >= mu - s) and (x <= mu + s):
-        result = -math.log(2.) - math.log(s) + math.log(1. + math.cos((x - mu)
-                                                        * math.pi / s))
-    else:
-        result = float("-inf")
-
-    return result
-
-
 def vec_lnlognorm(x, mu, sigma, shift=0.):
     """
     Vectorized (natural logarithm of) shifted lognormal distribution.
