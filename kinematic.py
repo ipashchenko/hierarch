@@ -69,8 +69,8 @@ class LnLike(object):
         :param loc (optional):
             Mean of the distribution.
 
-        :param logscale (optional):
-            Log of std of the distribution.
+        :param scale (optional):
+            Std of the distribution.
 
         :return:
             Log of pdf for normal distribution with specified parameters. Value
@@ -78,6 +78,27 @@ class LnLike(object):
         """
         return -0.5 * math.log(2. * math.pi) - math.log(scale) - \
                (x - loc) ** 2 / (2. * scale ** 2.)
+
+    @staticmethod
+    def ln_of_normpdf3(x, loc=0., tau=0.):
+        """
+        Returns ln of pdf for normal distribution at points x.
+
+        :param x:
+            Value (or array of values) for which to calculate the result.
+
+        :param loc (optional):
+            Mean of the distribution.
+
+        :param tau (optional):
+            Precision of the distribution.
+
+        :return:
+            Log of pdf for normal distribution with specified parameters. Value
+            or array of values (depends on ``x``).
+        """
+        return -0.5 * math.log(2. * math.pi) + 0.5 * math.log(tau) - \
+               tau * (x - loc) ** 2 / 2.
 
     def __init__(self, beta_ij):
         self._beta_ij = beta_ij
@@ -87,8 +108,8 @@ class LnLike(object):
         Returns ln of likelihood for kinematic model.
 
         :param p:
-            Parameters of model. [mu_{G}^{Gamma}, ln(tau_{G}^{Gamma}),
-            mu_{j}^{Gamma}, ln(tau_{j}_{Gamma}), j=1,...,N_{sources}]
+        Parameters of model. [alpha, beta, \Gamma_{max}, \Gamma_{j}, \Theta_{j},
+          s_Gj, r_Gj, s_Tj, r_Tj, j=1,...,N_{source}]
 
         :return:
             Ln of likelihood function.
@@ -104,13 +125,38 @@ def lnpr(p):
     Prior on parameters.
 
     :param p:
-        Parameters of model. [mu, log_sigma, log_tau, theta_j j=1,...,N]
+        Parameters of model. [alpha, beta, \Gamma_{max}, \Gamma_{j}, \Theta_{j},
+          s_Gj, r_Gj, s_Tj, r_Tj, j=1,...,N_{source}]
 
     :return:
         Log of prior density for given parameter ``p``.
     """
 
-    return p[2]
+    result = 0
+    if p[0] < 0 or p[1] < 0 or p[2] < 2:
+        result = float("-inf")
+
+    return result
+
+
+def model(gamma, theta):
+    """
+    Model used.
+
+    :param gamma:
+        Lorenz factor.
+
+    :param theta:
+        Angle to LOS.
+
+    :return:
+        Apparent speed (in units of speed of light)
+
+    \beta_{app} = sqrt(\gamma ** 2 - 1) * sin(\theta) /
+                    (\gamma - sqrt(\gamma ** 2 - 1) * cos(\theta))
+    """
+    k = math.sqrt(gamma ** 2. - 1.)
+    return k * math.sin(theta) / (gamma - k * math.cos(theta))
 
 
 def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10. ** 4):
@@ -201,7 +247,7 @@ def vec_lngenbeta(x, alpha, beta, c, d):
     return result
 
 
-def vec_lngamma(x, s, r):
+def vec_ln_gamma(x, s, r):
     """
     Vectorized (natural logarithm of) Gamma distribution with shape and rate
     parameters ``s`` & ``r``.
