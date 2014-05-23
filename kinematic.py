@@ -102,22 +102,63 @@ class LnLike(object):
 
     def __init__(self, beta_ij):
         self._beta_ij = beta_ij
+        self.n_s = len(beta_ij)
 
     def __call__(self, p):
         """
         Returns ln of likelihood for kinematic model.
 
         :param p:
-        Parameters of model. [alpha, beta, \Gamma_{max}, \Gamma_{j}, \Theta_{j},
-          s_Gj, r_Gj, s_Tj, r_Tj, j=1,...,N_{source}]
+        Parameters of model. [alpha, beta, \gamma_{max}, \mu_g_{j}, \mu_t_{j},
+        \tau_g_{j}, \tau_t_{j}, s_g, r_g, s_t, r_t, j=1,...,N_{source}]
 
         :return:
             Ln of likelihood function.
         """
-        k = sum([np.sum(self.ln_of_normpdf2(self.y_ij[j], loc=theta,
-                                           logscale=p[2])) for j, theta in
+
+        n_s = self.n_s
+        # Sums for j=1 to #sources
+
+        # k1: \mu_g_{j} ~ genBeta(alpha, beta, 2, \gamma_{max})
+        k1 = np.sum(vec_lngenbeta(p[3: 3 + n_s], p[0], p[1], 2, p[2]))
+
+        # k2: \tau_g_{j} ~ Gamma(s_g, r_g)
+        k2 = np.sum(vec_ln_gamma(p[6 + 2 * n_s: 6 + 3 * n_s], p[3], p[4]))
+
+        # k3: \tau_t_{j} ~ Gamma(s_t, r_t)
+        k3 = np.sum(vec_ln_gamma(p[6 + 3 * n_s: 6 + 4 * n_s], p[5], p[6]))
+
+        # k4: \mu_t_{j} ~ P_{KDE}(params of shifted lognormal pdf: mean=0,
+        #                         \tau_t_{j}, shift=\mu_g_{j})
+        kde_lnprob_list = list()
+        for j in range(n_s):
+            kde = get_pdf_of_theta_given_gamma(0, p[6 + 2 * n_s + j], p[6 + j],
+                                               size=10. ** 4, a=2.)
+            kde_lnprob_list.append(math.log(kde(p[6 + n_s + j])))
+        k4 = sum(kde_lnprob_list)
+
+        # k5: gamma_{ij} ~ logNorm(mean=0, tau=\tau_g_{j}, shift=\mu_g_{j})
+        k5 = np.sum(vec_lnlognorm())
+
+        # k6: theta_{ij} ~ Norm(mean=\mu_t_{j}, tau=\tau_t_{j}, 0, \pi)
+
+        # k7: beta^{obs}_{ij} ~ Norm(mean=model(gamma_{ij}, theta_{ij}),
+        #                            tau=tau^{obs}_{ij}))
+        k7 = sum([np.sum(self.ln_of_normpdf3(self.beta_obs_ij[j],
+                                             loc=model(gamma_ij, theta_ij),
+                                             tau=tau_obs_ij)) for j, theta in
                  enumerate(p[3:])])
-        return np.sum(self.ln_of_normpdf2(p[3:], loc=p[0], logscale=p[1])) + k
+
+
+
+
+        # Double sums for j=1 to #sources & for i=1 to #obs for current source
+        kk1 = sum([np.sum(vec_lnlognorm())])
+
+        #k = sum([np.sum(self.ln_of_normpdf2(self.y_ij[j], loc=theta,
+        #                                   logscale=p[2])) for j, theta in
+        #         enumerate(p[3:])])
+        #return np.sum(self.ln_of_normpdf2(p[3:], loc=p[0], logscale=p[1])) + k
 
 
 def lnpr(p):

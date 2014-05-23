@@ -1,0 +1,60 @@
+# Full model
+# This model assumes that all components from one source have DIFFERENT \gamma &
+# \theta generated from some narrow distributions.
+model{
+  for(i in 1: Ndata){
+    beta_obs[i] ~ dnorm(beta[i], tau_beta_obs[i])
+    beta[i] <- sqrt(gamma[i]**2-1)*sin(theta[i])/(gamma[i]-sqrt(gamma[i]**2-1)*cos(theta[i]))
+    gamma[i] ~ dlognorm_sh(mu_gamma[subj[i]], tau_gamma[subj[i]])
+    theta[i] ~ dnorm_tr(mu_theta[subj[i]], tau_theta[subj[i]])
+  }
+
+
+  for(j in 1: Nsubj){
+    mu_gamma[j] ~ dgenbeta(alpha, beta, 2, gamma_max) T(0, )
+    mu_theta[j] ~ simulation(mu_gamma[j], tau_gamma[j]) T(0, ))
+    tau_theta[j] ~ dgamma(s_theta, r_theta)
+    tau_gamma[j] ~ dgamma(s_gamma, r_gamma)
+  }
+
+  alpha ~ dunif(0, 1000.)
+  beta ~ dunif(0, 1000.)
+  gamma_max ~ dunif(2, 1000.)
+  s_theta ~
+  t_theta ~
+  s_gamma ~
+  r_gamma ~
+
+}
+
+
+# Moved source-level gamma & beta to first level
+# This model assumes that all components from one source have THE SAME \gamma &
+# \theta generated from some narrow distributions.
+model{
+  # Zero level (individual components velocities)
+  for(i in 1: Ndata){
+    beta_obs[i] ~ dnorm(beta[i], tau_beta_obs[i])
+    beta[i] <- sqrt(gamma[subj[i]]**2-1)*sin(theta[subj[i]])/(gamma[subj[i]]-sqrt(gamma[subj[i]]**2-1)*cos(theta[subj[i]]))
+  }
+
+  # First level (source's distribution of gamma & theta)
+  for(j in 1: Nsubj){
+    gamma[j] ~ dlognorm_sh(mu_gamma[j], tau_gamma[j])
+    theta[j] ~ dnorm_tr(mu_theta[j], tau_theta[j])
+    mu_gamma[j] ~ dgenbeta(alpha, beta, 2, gamma_max) T(0, )
+    mu_theta[j] ~ simulation(mu_gamma[j], tau_gamma[j]) T(0, ))
+    tau_theta[j] ~ dgamma(s_theta, r_theta)
+    tau_gamma[j] ~ dgamma(s_gamma, r_gamma)
+  }
+
+  # Second level (source's population parameters)
+  alpha ~ dunif(0, 1000.)
+  beta ~ dunif(0, 1000.)
+  gamma_max ~ dunif(2, 1000.)
+  s_theta ~
+  t_theta ~
+  s_gamma ~
+  r_gamma ~
+
+}
