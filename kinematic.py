@@ -137,23 +137,23 @@ class LnLike(object):
             kde_lnprob_list.append(math.log(kde(p[6 + n_s + j])))
         k4 = sum(kde_lnprob_list)
 
-        # k5: gamma_{ij} ~ logNorm(mean=0, tau=\tau_g_{j}, shift=\mu_g_{j})
-        k5 = np.sum(vec_lnlognorm())
+        # Construct j KDEs of j \beta distribution for each source using
+        # \mu_g_{j}, \tau_g_{j} & \mu_t_{j}, \tau_t_{j}
+        # First, draw samples from distribution of \g_{j} & \t_{j}
+        t_samples = list()
+        g_samples = list()
+        for j in range(n_s):
+            t_sample = get_samples_from_shifted_lognormal(0, 1/math.sqrt(p[3 +
+                                                          n_s + j]), p[2 + j])
+            t_samples.append(t_sample)
+            g_sample =
 
-        # k6: theta_{ij} ~ Norm(mean=\mu_t_{j}, tau=\tau_t_{j}, 0, \pi)
-
-        # k7: beta^{obs}_{ij} ~ Norm(mean=model(gamma_{ij}, theta_{ij}),
-        #                            tau=tau^{obs}_{ij}))
+        # k7: beta^{obs}_{ij} ~ KDE_mu_beta(beta_obs_{ij})
         k7 = sum([np.sum(self.ln_of_normpdf3(self.beta_obs_ij[j],
                                              loc=model(gamma_ij, theta_ij),
                                              tau=tau_obs_ij)) for j, theta in
                  enumerate(p[3:])])
 
-
-
-
-        # Double sums for j=1 to #sources & for i=1 to #obs for current source
-        kk1 = sum([np.sum(vec_lnlognorm())])
 
         #k = sum([np.sum(self.ln_of_normpdf2(self.y_ij[j], loc=theta,
         #                                   logscale=p[2])) for j, theta in
@@ -200,12 +200,24 @@ def model(gamma, theta):
     return k * math.sin(theta) / (gamma - k * math.cos(theta))
 
 
-def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10. ** 4):
+def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10 ** 4):
     """
     Function that returns ``size`` number of samples from lognormal distribution
     with ``mu``, ``sigma`` and shifted by ``shift``.
     """
     return np.random.lognormal(mean=mean, sigma=sigma, size=size) + float(shift)
+
+
+def get_samples_from_truncated_normal(mean, sigma, a, b, size=10 ** 4):
+    """
+    Function that returns ``size`` number of samples from truncated normal
+    distribution with ``mu``, ``sigma`` and truncated at [``a``, ``b``].
+    """
+
+    kwargs = {'loc': mean, 'scale': sigma}
+    us = np.random.uniform(norm.cdf(a, **kwargs), norm.cdf(b, **kwargs),
+                           size=size)
+    return norm.ppf(us, **kwargs)
 
 
 def get_theta_sample(gamma_sample, a=2.):
