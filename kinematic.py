@@ -139,27 +139,18 @@ class LnLike(object):
 
         # Construct j KDEs of j \beta distribution for each source using
         # \mu_g_{j}, \tau_g_{j} & \mu_t_{j}, \tau_t_{j}
-        # First, draw samples from distribution of \g_{j} & \t_{j}
-        t_samples = list()
-        g_samples = list()
+        beta_kdes = list()
         for j in range(n_s):
-            t_sample = get_samples_from_shifted_lognormal(0, 1/math.sqrt(p[3 +
+            g_sample = get_samples_from_shifted_lognormal(0, 1/math.sqrt(p[3 +
                                                           n_s + j]), p[2 + j])
-            t_samples.append(t_sample)
-            g_sample =
+            t_sample = get_samples_from_truncated_normal(p[3 + n_s + j],
+                                                         p[3 + 3 * n_s + j])
+            beta_sample = model(g_sample, t_sample)
+            beta_kdes.append(gaussian_kde(beta_sample))
 
         # k7: beta^{obs}_{ij} ~ KDE_mu_beta(beta_obs_{ij})
-        k7 = sum([np.sum(self.ln_of_normpdf3(self.beta_obs_ij[j],
-                                             loc=model(gamma_ij, theta_ij),
-                                             tau=tau_obs_ij)) for j, theta in
-                 enumerate(p[3:])])
-
-
-        #k = sum([np.sum(self.ln_of_normpdf2(self.y_ij[j], loc=theta,
-        #                                   logscale=p[2])) for j, theta in
-        #         enumerate(p[3:])])
-        #return np.sum(self.ln_of_normpdf2(p[3:], loc=p[0], logscale=p[1])) + k
-
+        k7 = sum([np.sum(np.log(beta_kdes(self.beta_obs_ij[j]))) for j in
+                  range(n_s)])
 
 def lnpr(p):
     """
@@ -196,8 +187,8 @@ def model(gamma, theta):
     \beta_{app} = sqrt(\gamma ** 2 - 1) * sin(\theta) /
                     (\gamma - sqrt(\gamma ** 2 - 1) * cos(\theta))
     """
-    k = math.sqrt(gamma ** 2. - 1.)
-    return k * math.sin(theta) / (gamma - k * math.cos(theta))
+    k = np.sqrt(gamma ** 2. - 1.)
+    return k * np.sin(theta) / (gamma - k * np.cos(theta))
 
 
 def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10 ** 4):
