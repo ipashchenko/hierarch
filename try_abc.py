@@ -1,33 +1,75 @@
-#!/usr/bin python
+#!/usr/bin python2
 # -*- coding: utf-8 -*-
 
+import sys
+sys.path.append('/home/ilya/work/emcee')
+import emcee
 import numpy as np
 import math
 from scipy.stats import gaussian_kde, norm
 
 
-def generate_beta_app(u_mean, u_std, n_components, theta_jet_std,
-                      size_samples=10000.):
+def abc_lnprob(p, data, eps, summary_diff_fn, gamma_max=100.):
+    """
+    Function that returns ln of prior probability for given parameters ``p`` if
+    summary statistic for generated data lies within tolerance ``eps`` from
+    summary statistic of real data ``data`` or ``-inf`` if it is not the case.
 
-    u_sample = np.random.normal(loc=u_mean, scale=u_std, size=size_samples)
-    gamma_sample = np.exp(u_sample) + 1.
-    large_theta_sample = get_theta_sample(gamma_sample, a=2.)
-    theta_pdf = gaussian_kde(large_theta_sample)
-    theta_jet = theta_pdf.resample(size=1)
-    theta_components = get_samples_from_truncated_normal(theta_jet,
-                                                         theta_jet_std, 0.,
-                                                         math.pi,
-                                                         size=n_components)
+    :param p:
+        Parameter vector. [\gamma_mean, \gamma_std, \theta, \delta_theta], where
+        \gamma_mean & \gamma_std - mean & std of truncated at [1, ``gamma_max``]
+        normal distribution, \theta - mean angle of jet to LOS and \delta_theta
+        - range of angles for components around some \theta.
 
-    u_components = np.random.normal(loc=u_mean, scale=u_std, size=n_components)
-    gamma_components = np.exp(u_components) + 1.
+    :param data:
+        Data of observed superluminal speeds.
 
-    k = np.sqrt(gamma_components ** 2. - 1.)
+    :param eps:
+        Tolerance.
 
-    return k * np.sin(theta_components) / (gamma_components -
-                                           k * np.cos(theta_components))
+    :param summary_diff_fn:
+        Function that given generated and real data returns difference of some
+        summary statistic for this data sets.
 
+    :return:
+        ln of prior density for ``p`` if output of summary_diff_fn is less then
+        tolerance ``eps`` and ``-inf`` otherwise.
+    """
 
+    # Number of jet components
+    n_comps = len(data)
+    # Generate big sample of \gamma for constructing pdf for \theta_jet
+    gamma_sample = get_samples_from_truncated_normal(p[0], p[1], 1, gamma_max)
+    prior_theta_sample = get_theta_sample(gamma_sample, a=2.)
+
+    try:
+        theta_prior = gaussian_kde(prior_theta_sample)
+    except ValueError:
+        print "Using mean theta for jet"
+        theta_jet = np.mean(prior_theta_sample)
+
+    theta_comps = np.random.uniform(low=p[2] - 0.5 * p[3],
+                                    high=p[2] + 0.5 * p[3],
+                                    size=n_comps)
+
+    # Generating data
+    gamma_comps = get_samples_from_truncated_normal(p[0], p[1], 1, gamma_max,
+                                                    size=n_comps)
+    k = np.sqrt(gamma_comps ** 2. - 1.)
+    gen_data = k * np.sin(theta_comps) / (gamma_comps - k * np.cos(theta_comps))
+
+    if p[1] <= 0:
+        result = float("-inf")
+        print "Non-positive scale"
+    else:
+        summary_ = summary(gen_data, data)
+        if summary_ < eps:
+            # Calculating ln of prior for ``p``
+            result = lnpr(p)
+        else:
+            result = float("-inf")
+
+    return result
 
 
 def get_theta_sample(gamma_sample, a=2.):
@@ -73,7 +115,7 @@ def get_samples_from_truncated_normal(mean, sigma, a, b, size=10 ** 4):
     kwargs = {'loc': mean, 'scale': sigma}
     us = np.random.uniform(norm.cdf(a, **kwargs), norm.cdf(b, **kwargs),
                            size=size)
-    return norm.ppf(us, **kwargs)[0]
+    return norm.ppf(us, **kwargs)
 
 
 def summary(gendata, data):
@@ -89,16 +131,11 @@ def summary(gendata, data):
     """
     return math.sqrt((np.mean(gendata) - np.mean(data)) ** 2. +
                      (np.min(gendata) - np.min(data)) ** 2. +
-                     (np.max(gendata) - np.max(data)) ** 2.)
+                     (np.max(gendata) - np.max(data)) ** 2.) / (math.sqrt(3.) *
+                                                                len(data))
 
 
-def get_summary(data, u_mean, u_std):
-    gendata = generate_beta_app(u_mean, u_std, n_components=len(data),
-                                theta_jet_std=0.03)
-    return summary(gendata, data)
-
-
-if __name__ == '__main__':
+def load_data(name):
 
     # Load data
     data_lists = list()
@@ -140,9 +177,31 @@ if __name__ == '__main__':
         beta_sigmas_dict.update({source: [beta_sigmas_list[i] for i in
                                           indices]})
 
-    source = '1510-089'
-    data = betas_dict[source]
+    data = betas_dict[name]
+    return data
 
-    # Gamma ~ 10 corresponds to log(G - 1) ~ 2.2
-    gen_betas = generate_beta_app(2.2, 0.2, n_components=len(data),
-                                  theta_jet_std=0.03, size_samples=10000)
+
+if __name__ == '__main__':
+
+    data = load_data()
+   # # Gamma ~ 10 corresponds to log(G - 1) ~ 2.2
+   # gen_betas = generate_beta_app(2.2, 0.2, n_components=len(data),
+   #                               theta_jet_std=0.03, size_samples=10000)
+   # eps = 1.2
+   # ndim = 2
+   # nwalkers = 250
+   # p0 = emcee.utils.sample_ball([2.1, 0.08], [0.4, 0.02], nwalkers)
+   # sampler = emcee.EnsembleSampler(nwalkers, ndim, indicator, args=[data, eps])
+   # pos, prob, state = sampler.run_mcmc(p0, 500)
+   # sampler.reset()
+   # sampler.run_mcmc(pos, 1000, rstate0=state)
+
+    # Using MH
+    ndim = 2
+    eps = 1.5
+    p0 = [2.5, 0.80]
+    cov = [[0.1, 0], [0, 0.01]]
+    mhsampler = emcee.mh.MHSampler(cov, ndim, indicator, args=[data, eps])
+    pos, prob, state = mhsampler.run_mcmc(p0, 10000)
+    mhsampler.reset()
+    mhsampler.run_mcmc(pos, 100000, rstate0=state)
