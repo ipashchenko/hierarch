@@ -8,7 +8,7 @@ from scipy.stats import gaussian_kde
 from scipy.stats import norm
 from scipy.special import gamma
 import sys
-sys.path.append('/home/ilya/work/upstream/emcee')
+sys.path.append('/home/ilya/code/upstream/emcee')
 import emcee
 
 
@@ -17,32 +17,19 @@ class LnPost(object):
     """
     Class that represents log of posterior density for kinematic model.
     """
-    def __init__(self, beta_obs, sigma_beta_obs, alpha_max=None, beta_max=None,
-                 c_min=None, c_max=None, d_min=None, d_max=None, s_t=0.01,
-                 r_t=0.01):
-        beta_obs_min = min(beta_obs)
-        sigma_beta_obs_min = sigma_beta_obs[beta_obs.index(beta_obs_min)]
-        beta_obs_max = max(beta_obs)
-        sigma_beta_obs_max = sigma_beta_obs[beta_obs.index(beta_obs_max)]
-        if alpha_max is None:
-            alpha_max = 10.
-        if beta_max is None:
-            beta_max = 10.
-        if c_min is None:
-            c_min = 1.
-        if d_min is None:
-            d_min = beta_obs_max + 3. * sigma_beta_obs_max
-        if c_max is None:
-            c_max = d_min
-        if d_max is None:
-            d_max = 100.
-        self._lnlike = LnLike(beta_obs, sigma_beta_obs)
-        self._lnpr = LnPrior(alpha_max=alpha_max, beta_max=beta_max,
-                             c_min=c_min, c_max=c_max, d_min=d_min, d_max=d_max,
-                             s_t=s_t, r_t=r_t)
+    def __init__(self, beta_obs, sigma_beta_obs, prags=[], prkwargs={},
+                 likargs=[], likkwargs={}):
+        #beta_obs_min = min(beta_obs)
+        #sigma_beta_obs_min = sigma_beta_obs[beta_obs.index(beta_obs_min)]
+        #beta_obs_max = max(beta_obs)
+        #sigma_beta_obs_max = sigma_beta_obs[beta_obs.index(beta_obs_max)]
+        self._lnlike = LnLike(beta_obs, sigma_beta_obs, *likargs, **likkwargs)
+        self._lnpr = LnPrior(*prags, **prkwargs)
+        self._lnpr.n_c = self._lnlike.n_c
 
     def __call__(self, p):
         lnpr = self._lnpr(p)
+        # If prior is ``-inf`` then don't calculate likelihood
         if lnpr == float("-inf"):
             result = float("-inf")
             print "zero prob. prior for parameter :"
@@ -81,9 +68,10 @@ class LnLike(object):
         return -0.5 * math.log(2. * math.pi) - np.log(scale) - \
                (x - loc) ** 2. / (2. * scale ** 2.)
 
-    def __init__(self, beta_obs, sigma_beta_obs):
+    def __init__(self, beta_obs, sigma_beta_obs, gamma_max=None):
         self.beta_obs = beta_obs
         self.sigma_beta_obs = sigma_beta_obs
+        self.gamma_max=gamma_max
         self.n_c = len(beta_obs)
         assert(len(beta_obs) == len(sigma_beta_obs))
 
@@ -92,64 +80,28 @@ class LnLike(object):
         Returns ln of likelihood for kinematic model.
 
         :param p:
-        Parameters of model. [\alpa, \beta, c, d, \mu_t, \tau_t, \G_{i}, \t_{i}]
+        Parameters of model. [\Gamma_0, \tau_g, \theta_0, \tau_t, \Gamma_{i},
+        \theta_{i}].
 
         :return:
             Ln of likelihood function.
         """
 
         p = np.asarray(p)
-        # k1: \mu_t ~ P_{KDE}(params of genbeta pdf: \alpha, \beta, c, d)
-        # Use abs() as negative values raise ValueError but have zero prior
-        # prob.
-        gamma_sample = get_samples_from_genbeta(abs(p[0]), abs(p[1]), p[2], p[3],
-                                                size=10 ** 4)
-        large_theta_sample = get_theta_sample(gamma_sample, a=2.)
-        try:
-            kde = gaussian_kde(large_theta_sample)
-            k1 = math.log(kde(p[4]))
-        except ValueError:
-            print "ValueError in LnLike.__call__ in kde of large_theta_sample"
-            print p
-            k1 = float("-inf")
-
-
-        # k2: \G_{i} ~ genBeta(\alpha, \beta, c, d)
-        try:
-            k2 = np.sum(vec_lngenbeta(p[6: 6 + self.n_c], p[0], p[1], p[2], p[3]))
-        except ValueError:
-            print "ValueError in LnLike.__call__ in vec_lngenbeta()"
-            k2 = float("-inf")
-            print p
-
-        # k3: \t_{i} ~ trNorm(\mu_t, \tau_t)
-        try:
-            k3 = np.sum(vec_ln_normal_trunc(p[6 + self.n_c: 6 + 2 * self.n_c],
-                                            p[4], p[5], 0., math.pi))
-        except ValueError:
-            print "ValueError in LnLike.__call__ in vec_ln_normal_trunc()"
-            k3 = float("-inf")
-            print p
-
-        # k4: beta^{obs}_{i} ~ Norm(beta_obs_{i}, model(\G_{i}, \t_{i}),
-        # \tau_obs_i))
-        k4 = np.sum(self.ln_of_normpdf(self.beta_obs,
-                                       loc=model(p[6: 6 + self.n_c],
-                                       p[6 + self.n_c: 6 + 2 * self.n_c]),
+        # likelihood: beta^{obs}_{i} ~ Norm(model(\G_{i}, \t_{i}), \tau_obs_i))
+        r1 = np.sum(self.ln_of_normpdf(self.beta_obs,
+                                       loc=model(p[4: 4 + self.n_c],
+                                       p[4 + self.n_c: 4 + 2 * self.n_c]),
                                        scale=self.sigma_beta_obs))
+        return r1
 
-        return k1 + k2 + k3 + k4
 
-
+# TODO: add prior on absence of reverse moving: delta_t < theta_0
 class LnPrior(object):
-    def __init__(self, alpha_max=None, beta_max=None, c_min=None, c_max=None,
-                 d_min=None, d_max=None, s_t=None, r_t=None):
-        self.alpha_max = alpha_max
-        self.beta_max = beta_max
-        self.c_min = c_min
-        self.c_max = c_max
-        self.d_min = d_min
-        self.d_max = d_max
+    def __init__(self, gamma_max=None, s_g=None, r_g=None, s_t=None, r_t=None):
+        self.gamma_max = gamma_max
+        self.s_g = s_g
+        self.r_g = r_g
         self.s_t = s_t
         self.r_t = r_t
 
@@ -158,33 +110,46 @@ class LnPrior(object):
         Prior on parameters.
 
         :param p:
-            Parameters of model. [\alpa, \beta, c, d, \mu_t, \tau_t, \G_{i},
-            \t_{i}]
+            Parameters of model. [\Gamma_0, \tau_g, \theta_0, \tau_t,
+            \Gamma_{i},\theta_{i}].
+
         :return:
             Log of prior density for given parameter ``p``.
         """
 
         p = np.asarray(p)
+
+        # \Gamma_0 ~ unif(1., gamma_max)
+        r1 = vec_ln_unif(p[0], 1., self.gamma_max)
+
+        # \tau_g ~ Gamma(s_g, r_g)
+        r2 = vec_ln_gamma(p[1], self.s_g, self.r_g)
+
         # \tau_t ~ Gamma(s_t, r_t)
-        result = vec_ln_gamma(p[5], self.s_t, self.r_t)
+        r3 = vec_ln_gamma(p[3], self.s_t, self.r_t)
 
-        # \alpha ~ Unif(0, \alpha_max)
-        if (self.alpha_max < p[0]) or (p[0] < 0):
-            result = float("-inf")
+        # \theta_0 ~ KDE(\Gamma_0, \tau_g)
+        gamma_sample = get_samples_from_truncated_normal(p[0], 1. / p[1] ** 2.,
+                                                         1., self.gamma_max)
+        large_theta_sample = get_theta_sample(gamma_sample, a=2.)
+        try:
+            kde = gaussian_kde(large_theta_sample)
+            r4 = math.log(kde(p[2]))
+        except ValueError:
+            print "ValueError in LnLike.__call__ in kde of large_theta_sample"
+            print p
+            r4 = float("-inf")
 
-        # \beta ~ Unif(0, \beta_max)
-        if (self.beta_max < p[1]) or (p[1] < 0):
-            result = float("-inf")
+        # \Gamma_{i} ~ trNorm(\Gamma_0, \tau_g)
+        r5 = np.sum(vec_ln_normal_trunc(p[4: 4 + self.n_c], p[0],
+                                        1. / p[1] ** 2., 1., self.gamma_max))
 
-        # c ~ Unif(1, \c_max)
-        if (self.c_max < p[2]) or (p[2] < 1):
-            result = float("-inf")
+        delta = 0.5 / math.sqrt(p[3])
+        # \theta_{i} ~ Unif(\theta_0 - delta, \theta_0 + delta)
+        r6 = np.sum(vec_ln_unif(p[4 + self.n_c: 4 + 2 * self.n_c], p[2] - delta,
+                                p[2] + delta))
 
-        # d ~ Unif(d_min, d_max)
-        if (self.d_max < p[3]) or (p[3] < self.d_min):
-            result = float("-inf")
-
-        return result
+        return r1 + r2 + r3 + r4 + r5 + r6
 
 
 def model(gamma, theta):
@@ -205,22 +170,6 @@ def model(gamma, theta):
     """
     k = np.sqrt(gamma ** 2. - 1.)
     return k * np.sin(theta) / (gamma - k * np.cos(theta))
-
-
-def get_samples_from_genbeta(alpha, beta, c, d, *args, **kwargs):
-    return (d - c) * np.random.beta(alpha, beta, *args, **kwargs) + c
-
-
-def get_samples_from_normal(mean, tau, size=10 ** 4):
-    return np.random.normal(loc=mean, scale=1./math.sqrt(tau), size=size)
-
-
-def get_samples_from_shifted_lognormal(mean, sigma, shift, size=10 ** 4):
-    """
-    Function that returns ``size`` number of samples from lognormal distribution
-    with ``mu``, ``sigma`` and shifted by ``shift``.
-    """
-    return np.random.lognormal(mean=mean, sigma=sigma, size=size) + float(shift)
 
 
 def get_samples_from_truncated_normal(mean, sigma, a, b, size=10 ** 4):
@@ -269,43 +218,13 @@ def get_theta_sample(gamma_sample, a=2.):
     return theta_sample
 
 
-def get_pdf_of_theta_given_gamma(mean, tau, size=10 ** 4, a=2.):
+def vec_ln_unif(x, a, b):
     """
-    Function that returns callable pdf of theta distribution given parameters
-    of gamma distribution (that is shifted lognormal).
-    """
-    gamma_sample = get_samples_from_normal(mean, tau, size=size)
-    theta_sample = get_theta_sample(gamma_sample, a=a)
-    return gaussian_kde(theta_sample)
+Vectorized (natural logarithm of) uniform distribution on [a, b].
+"""
 
-
-def vec_lnlognorm(x, mu, sigma, shift=0.):
-    """
-    Vectorized (natural logarithm of) shifted lognormal distribution.
-    Used for modelling \Gamma_{j} with mean = ``shift``, ``mu`` = 0 and
-    sigma ~ 0.1/1.
-    """
-
-    x_ = np.where(0 < (x - shift), (x - shift), 1)
-    result1 = -np.log(np.sqrt(2. * math.pi) * x_ * sigma) - (np.log(x_) - mu) \
-                                                            ** 2 / (2. * sigma ** 2)
-    result = np.where(0 < (x - shift), result1, float("-inf"))
-
-    return result
-
-
-def vec_lngenbeta(x, alpha, beta, c, d):
-    """
-    Vectorized (natural logarithm of) Beta distribution with support (c,d).
-    A.k.a. generalized Beta distribution.
-    """
-
-    x_ = np.where((c < x) & (x < d), x, 1)
-
-    result1 = -math.log(special.beta(alpha, beta)) - (alpha + beta - 1.) * \
-                                                     math.log(d - c) + (alpha - 1.) * np.log(x_ - c) + (beta - 1.) * \
-              np.log(d - x_)
-    result = np.where((c < x) & (x < d), result1, float("-inf"))
+    result1 = -np.log(b - a)
+    result = np.where((a <= x) & (x <= b), result1, float('-inf'))
 
     return result
 
@@ -339,7 +258,41 @@ def vec_ln_normal_trunc(x, mean, sigma, a, b):
     return result
 
 
-if __name__ == '__main__':
+def generate_data(gamma_0, tau_g, theta_0=None, delta_t=1.3 * math.pi / 180.,
+                  n_c=None, gamma_max=50.):
+    """
+    Generate superluminal velocities for ``n_c`` components.
+
+    :param gamma_0:
+    :param tau_g:
+    :param theta_0:
+    :param s_t:
+    :param n_c:
+
+    :return:
+        List of ``n_c`` values of \beta
+    """
+
+    if theta_0 is None:
+        # Prepare sample of \Gamma for simulating sample of \theta
+        gamma_sample = get_samples_from_truncated_normal(gamma_0,
+                                                         math.sqrt(1. / tau_g),
+                                                         1., gamma_max)
+        theta_sample = get_theta_sample(gamma_sample)
+        theta_pdf = gaussian_kde(theta_sample)
+        # Choose mean LOS angle
+        theta_0 = theta_pdf.resample(size=1)
+    # Simulate individual components angles
+    theta_comps = abs(np.random.uniform(theta_0 - delta_t, theta_0 + delta_t,
+                                    size=n_c))
+    # Simulate individual components \gamma
+    gamma_comps = get_samples_from_truncated_normal(gamma_0,
+                                                    math.sqrt(1. / tau_g), 1.,
+                                                    gamma_max, size=n_c)
+    return 180. * theta_0 / math.pi, model(gamma_comps, theta_comps)
+
+
+def load_data(source):
 
     # Load data
     data_lists = list()
@@ -381,15 +334,25 @@ if __name__ == '__main__':
         beta_sigmas_dict.update({source: [beta_sigmas_list[i] for i in
                                           indices]})
 
-    source = '1510-089'
     beta_obs = betas_dict[source]
     sigma_beta_obs = beta_sigmas_dict[source]
     tau_obs = [1./sigma**2. for sigma in beta_sigmas_dict[source]]
 
-    lnpost = LnPost(beta_obs, sigma_beta_obs)
+    return beta_obs, sigma_beta_obs
+
+
+if __name__ == '__main__':
+
+
+    beta_obs, sigma_beta_obs = load_data('some source')
+
+    gamma_max = {'gamma_max': 50.}
+    lnpost = LnPost(beta_obs, sigma_beta_obs, likkwargs=gamma_max,
+                    prkwargs=gamma_max)
     ndim = 6 + 2 * len(beta_obs)
     nwalkers = 250
-    # Parameters of model. [\alpa, \beta, c, d, \mu_t, \tau_t, \G_{i}, \t_{i}]
+    # Parameters of model. [\Gamma_0, \tau_g, \theta_0, \tau_t,
+    # \Gamma_{i},\theta_{i}].
     p0 = emcee.utils.sample_ball([5., 5., 1.2, 50., 0.1, 0.02, 10., 10.,
                                   10., 10., 10., 10., 10., 10., 10., 10., 0.1,
                                   0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
