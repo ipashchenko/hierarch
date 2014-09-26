@@ -78,23 +78,49 @@ def lnpr(p):
 
 if __name__ == '__main__':
     # Data from Gelman (Table 11.2)
+    # y_ij = list()
+    # y_ij.append([62, 60, 63, 59])
+    # y_ij.append([63, 67, 71, 64, 65, 66])
+    # y_ij.append([68, 66, 71, 67, 68, 68])
+    # y_ij.append([56, 62, 60, 61, 63, 64, 63, 59])
+    # print y_ij
+    # Generate some BIG fake data
     y_ij = list()
-    y_ij.append([62, 60, 63, 59])
-    y_ij.append([63, 67, 71, 64, 65, 66])
-    y_ij.append([68, 66, 71, 67, 68, 68])
-    y_ij.append([56, 62, 60, 61, 63, 64, 63, 59])
-    print y_ij
+    # Group level
+    mu_G = 5.
+    std_G = 3.
+    std = 1.
+    # Group means
+    for i in range(1000):
+        mu_i = np.random.normal(mu_G, std_G)
+        size = np.random.random_integers(4, 10, size=1)
+        y_ij.append(list(np.random.normal(mu_i, std, size=size)))
     lnpost = LnPost(y_ij, lnpr=lnpr)
-    ndim = 7
-    nwalkers = 500
+    ndim = 1003
+    nwalkers = 4 * ndim
     sampler = EnsembleSampler(nwalkers, ndim, lnpost)
-    p0 = sample_ball([60., 0., 0., 60., 60., 60., 60.],
-                     [10., 1., 1., 10., 10., 10., 10.], size=500)
+    means = np.random.uniform(1., 10., size=1003)
+    stds = np.random.uniform(0.5, 1, size=1003)
+    p0 = sample_ball(list(means), list(stds), size=nwalkers)
+    # p0 = sample_ball([60., 0., 0., 60., 60., 60., 60.],
+     #                 [10., 1., 1., 10., 10., 10., 10.], size=500)
     print "sample ball :"
     print p0
     print "Burning-in..."
-    pos, prob, state = sampler.run_mcmc(p0, 300)
+    for pos, prob, state in sampler.sample(p0, iterations=300,
+                                           storechain=False):
+        pass
     print "Reseting burn-in..."
     sampler.reset()
     print "Now sampling from posterior"
-    sampler.run_mcmc(pos, 1000, rstate0=state)
+    f = open("chain.dat", "w")
+    f.close()
+
+    for result in sampler.sample(pos, iterations=500, storechain=False):
+        position = result[0]
+        f = open("chain.dat", "a")
+        for k in range(position.shape[0]):
+            f.write("{0:4d} {1:s}\n".format(k, " ".join(position[k])))
+        f.close()
+
+
