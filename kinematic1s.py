@@ -18,7 +18,7 @@ class LnPost(object):
     Class that represents log of posterior density for kinematic model.
     """
     def __init__(self, beta_obs, sigma_beta_obs, prags=[], prkwargs={},
-                 likargs=[], likkwargs={}):
+                likargs=[], likkwargs={}):
         #beta_obs_min = min(beta_obs)
         #sigma_beta_obs_min = sigma_beta_obs[beta_obs.index(beta_obs_min)]
         #beta_obs_max = max(beta_obs)
@@ -221,7 +221,7 @@ def get_theta_sample(gamma_sample, a=2.):
 def vec_ln_unif(x, a, b):
     """
 Vectorized (natural logarithm of) uniform distribution on [a, b].
-"""
+    """
 
     result1 = -np.log(b - a)
     result = np.where((a <= x) & (x <= b), result1, float('-inf'))
